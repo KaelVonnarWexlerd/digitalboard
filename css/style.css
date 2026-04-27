@@ -606,29 +606,32 @@ output {
   inset: 56px 0 0;
   z-index: 80;
   display: none;
-  place-items: center;
-  padding: 44px 110px 76px;
   background: var(--bg-main);
 }
 
 .zoom-screen.active {
-  display: grid;
+  display: block;
 }
 
 .zoom-stage {
-  position: relative;
-  max-width: min(100%, 1120px);
-  max-height: 100%;
-  overflow: auto;
+  position: absolute;
+  inset: 24px 104px 72px;
+  overflow: hidden;
   border-radius: 8px;
-  background: #ffffff;
+  background:
+    linear-gradient(90deg, rgba(31, 31, 31, 0.05) 1px, transparent 1px),
+    linear-gradient(rgba(31, 31, 31, 0.05) 1px, transparent 1px),
+    #ffffff;
+  background-size: 36px 36px;
   box-shadow: var(--shadow);
 }
 
 .zoom-image-canvas {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 1;
   display: block;
+  pointer-events: none;
 }
 
 .zoom-annotation-canvas {
@@ -636,6 +639,14 @@ output {
   inset: 0;
   z-index: 2;
   touch-action: none;
+}
+
+.zoom-annotation-canvas.pan-ready {
+  cursor: grab;
+}
+
+.zoom-annotation-canvas.pan-active {
+  cursor: grabbing;
 }
 
 .zoom-actions {
@@ -737,7 +748,11 @@ body.is-board {
   }
 
   .zoom-screen {
-    padding: 28px 24px 154px;
+    inset: 56px 0 0;
+  }
+
+  .zoom-stage {
+    inset: 18px 24px 154px;
   }
 
   .zoom-actions {

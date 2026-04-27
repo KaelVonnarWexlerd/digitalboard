@@ -769,6 +769,9 @@
     },
 
     getPoint(event, canvas) {
+      if (canvas.dataset.kind === "zoom") {
+        return ZoomManager.screenToWorld(event, canvas);
+      }
       const rect = canvas.getBoundingClientRect();
       const scale = this.getCanvasScale(canvas);
       return {
@@ -780,11 +783,25 @@
     handleDown(event) {
       const tool = boardState.currentTool;
       const canvas = event.currentTarget;
-      if (tool === "cursor") return;
+      const target = this.getCanvasTarget(canvas);
+      if (tool === "cursor") {
+        if (target.kind !== "zoom") return;
+        event.preventDefault();
+        canvas.setPointerCapture(event.pointerId);
+        this.active = {
+          mode: "zoomPan",
+          canvas,
+          target,
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          startCamera: ZoomManager.getCamera(target.id)
+        };
+        $(canvas).addClass("pan-active");
+        return;
+      }
 
       event.preventDefault();
       canvas.setPointerCapture(event.pointerId);
-      const target = this.getCanvasTarget(canvas);
       const point = this.getPoint(event, canvas);
 
       if (target.kind === "page") {
@@ -838,19 +855,35 @@
         const points = this.active.annotation.points;
         const previous = points[points.length - 1];
         points.push(point);
-        Renderer.drawStrokeSegment(canvas, this.active.annotation, previous, point);
+        if (this.active.target.kind === "zoom") {
+          Renderer.drawStrokeSegment(canvas, this.active.annotation, previous, point, this.active.target);
+        } else {
+          Renderer.drawStrokeSegment(canvas, this.active.annotation, previous, point);
+        }
       }
 
       if (this.active.mode === "shape") {
         this.active.latest = point;
         Renderer.redrawTarget(this.active.target);
         const preview = this.createShape(this.active.target, this.active.start, this.active.latest);
-        Renderer.drawAnnotation(canvas.getContext("2d"), preview, this.getCanvasScale(canvas));
+        if (this.active.target.kind === "zoom") {
+          Renderer.drawZoomPreview(canvas, preview, this.active.target.id);
+        } else {
+          Renderer.drawAnnotation(canvas.getContext("2d"), preview, this.getCanvasScale(canvas));
+        }
       }
 
       if (this.active.mode === "zoomSelection") {
         this.active.latest = point;
         this.updateZoomSelection();
+      }
+
+      if (this.active.mode === "zoomPan") {
+        ZoomManager.panTo(
+          this.active.target.id,
+          this.active.startCamera.x + event.clientX - this.active.startClientX,
+          this.active.startCamera.y + event.clientY - this.active.startClientY
+        );
       }
     },
 
@@ -859,6 +892,11 @@
       event.preventDefault();
       const active = this.active;
       this.active = null;
+      if (active.mode === "zoomPan") {
+        $(active.canvas).removeClass("pan-active");
+        UI.markDirty();
+        return;
+      }
 
       if (active.mode === "stroke") {
         if (active.annotation.points.length > 1) {
@@ -899,7 +937,7 @@
     },
 
     handleLeave(event) {
-      if (!this.active || this.active.mode === "zoomSelection") return;
+      if (!this.active || this.active.mode === "zoomSelection" || this.active.mode === "zoomPan") return;
       if (event.buttons === 0) this.handleUp(event);
     },
 
@@ -1014,9 +1052,12 @@
 
     refreshCanvasCursors() {
       $(".annotation-canvas, .zoom-annotation-canvas")
-        .removeClass("draw-ready erase-ready")
+        .removeClass("draw-ready erase-ready pan-ready")
         .each((_, canvas) => {
-          if (boardState.currentTool === "cursor") return;
+          if (boardState.currentTool === "cursor") {
+            if (canvas.dataset.kind === "zoom") $(canvas).addClass("pan-ready");
+            return;
+          }
           if (boardState.currentTool === "eraser") $(canvas).addClass("erase-ready");
           else $(canvas).addClass("draw-ready");
         });
@@ -1043,22 +1084,41 @@
     redrawZoom(zoomPageId) {
       const canvas = document.getElementById("zoomAnnotationCanvas");
       if (!canvas || canvas.dataset.zoomId !== zoomPageId) return;
+      const zoomPage = boardState.zoomPages[zoomPageId];
+      if (!zoomPage) return;
       const ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(zoomPage.cameraX || 0, zoomPage.cameraY || 0);
       Utils.getAnnotations({ kind: "zoom", id: zoomPageId }).forEach((annotation) => {
         this.drawAnnotation(ctx, annotation, 1);
       });
+      ctx.restore();
     },
 
-    drawStrokeSegment(canvas, annotation, from, to) {
+    drawStrokeSegment(canvas, annotation, from, to, target = null) {
       const ctx = canvas.getContext("2d");
       const scale = Number(canvas.dataset.coordScale || 1);
       ctx.save();
+      if (target && target.kind === "zoom") {
+        const zoomPage = boardState.zoomPages[target.id];
+        ctx.translate((zoomPage && zoomPage.cameraX) || 0, (zoomPage && zoomPage.cameraY) || 0);
+      }
       this.applyStrokeStyle(ctx, annotation, scale);
       ctx.beginPath();
       ctx.moveTo(from.x * scale, from.y * scale);
       ctx.lineTo(to.x * scale, to.y * scale);
       ctx.stroke();
+      ctx.restore();
+    },
+
+    drawZoomPreview(canvas, annotation, zoomPageId) {
+      const zoomPage = boardState.zoomPages[zoomPageId];
+      if (!zoomPage) return;
+      const ctx = canvas.getContext("2d");
+      ctx.save();
+      ctx.translate(zoomPage.cameraX || 0, zoomPage.cameraY || 0);
+      this.drawAnnotation(ctx, annotation, 1);
       ctx.restore();
     },
 
@@ -1378,6 +1438,9 @@
   };
 
   const ZoomManager = {
+    resizeTimer: null,
+    imageCache: new Map(),
+
     init() {
       const zoomCanvas = document.getElementById("zoomAnnotationCanvas");
       zoomCanvas.dataset.kind = "zoom";
@@ -1386,6 +1449,12 @@
 
       $("#saveZoomPage").on("click", () => this.saveActive());
       $("#deleteZoomPage").on("click", () => this.deleteActive());
+
+      $(window).on("resize", () => {
+        if (boardState.mode !== "zoom" || !boardState.activeZoomPageId) return;
+        window.clearTimeout(this.resizeTimer);
+        this.resizeTimer = window.setTimeout(() => this.renderZoomPage(boardState.activeZoomPageId), 120);
+      });
     },
 
     createFromSelection(pageNumber, rect) {
@@ -1410,8 +1479,12 @@
         sourcePage: pageNumber,
         rect: Utils.clone(rect),
         imageData: capture.toDataURL("image/png"),
-        boardWidth: boardSize.width,
-        boardHeight: boardSize.height,
+        imageWidth: boardSize.width,
+        imageHeight: boardSize.height,
+        imageX: -boardSize.width / 2,
+        imageY: 80,
+        cameraX: null,
+        cameraY: 0,
         annotations: [],
         saved: false,
         marker: null,
@@ -1447,6 +1520,7 @@
       $("#zoomScreen").addClass("active");
       $("#zoomAnnotationCanvas").attr("data-zoom-id", id);
       this.renderZoomPage(id);
+      ToolManager.setTool("cursor");
       UI.updateStatus();
       CanvasManager.refreshCanvasCursors();
     },
@@ -1463,23 +1537,112 @@
       const zoomPage = boardState.zoomPages[id];
       const imageCanvas = document.getElementById("zoomImageCanvas");
       const annotationCanvas = document.getElementById("zoomAnnotationCanvas");
-      const width = zoomPage.boardWidth || zoomPage.boardSize || 820;
-      const height = zoomPage.boardHeight || zoomPage.boardSize || width;
+      if (!zoomPage) return;
 
-      imageCanvas.width = width;
-      imageCanvas.height = height;
-      annotationCanvas.width = width;
-      annotationCanvas.height = height;
+      this.ensureZoomLayout(zoomPage);
+      this.resizeViewportCanvases();
       annotationCanvas.dataset.coordScale = "1";
 
-      const image = new Image();
-      image.onload = () => {
-        const ctx = imageCanvas.getContext("2d");
-        ctx.clearRect(0, 0, width, height);
-        ctx.drawImage(image, 0, 0, width, height);
-        this.renderZoomAnnotations(id);
+      this.renderZoomImage(id);
+      this.renderZoomAnnotations(id);
+    },
+
+    ensureZoomLayout(zoomPage) {
+      const width = zoomPage.imageWidth || zoomPage.boardWidth || zoomPage.boardSize || 820;
+      const height = zoomPage.imageHeight || zoomPage.boardHeight || zoomPage.boardSize || width;
+      zoomPage.imageWidth = width;
+      zoomPage.imageHeight = height;
+      if (!Number.isFinite(zoomPage.imageX)) zoomPage.imageX = -width / 2;
+      if (!Number.isFinite(zoomPage.imageY)) zoomPage.imageY = 80;
+
+      const stage = document.getElementById("zoomStage");
+      const stageWidth = Math.max(320, stage.clientWidth || window.innerWidth);
+      if (!Number.isFinite(zoomPage.cameraX)) zoomPage.cameraX = stageWidth / 2;
+      if (!Number.isFinite(zoomPage.cameraY)) zoomPage.cameraY = 0;
+    },
+
+    resizeViewportCanvases() {
+      const stage = document.getElementById("zoomStage");
+      const width = Math.max(320, Math.round(stage.clientWidth || window.innerWidth));
+      const height = Math.max(240, Math.round(stage.clientHeight || window.innerHeight - 160));
+      ["zoomImageCanvas", "zoomAnnotationCanvas"].forEach((id) => {
+        const canvas = document.getElementById(id);
+        if (canvas.width !== width) canvas.width = width;
+        if (canvas.height !== height) canvas.height = height;
+      });
+    },
+
+    getCamera(id) {
+      const zoomPage = boardState.zoomPages[id];
+      if (!zoomPage) return { x: 0, y: 0 };
+      this.ensureZoomLayout(zoomPage);
+      return { x: zoomPage.cameraX || 0, y: zoomPage.cameraY || 0 };
+    },
+
+    screenToWorld(event, canvas) {
+      const target = CanvasManager.getCanvasTarget(canvas);
+      const zoomPage = boardState.zoomPages[target.id];
+      const rect = canvas.getBoundingClientRect();
+      if (!zoomPage) {
+        return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      }
+      this.ensureZoomLayout(zoomPage);
+      return {
+        x: event.clientX - rect.left - zoomPage.cameraX,
+        y: event.clientY - rect.top - zoomPage.cameraY
       };
-      image.src = zoomPage.imageData;
+    },
+
+    panTo(id, cameraX, cameraY) {
+      const zoomPage = boardState.zoomPages[id];
+      if (!zoomPage) return;
+      zoomPage.cameraX = cameraX;
+      zoomPage.cameraY = cameraY;
+      this.renderZoomImage(id);
+      Renderer.redrawZoom(id);
+    },
+
+    getZoomImage(id) {
+      const zoomPage = boardState.zoomPages[id];
+      if (!zoomPage) return Promise.resolve(null);
+      const cached = this.imageCache.get(id);
+      if (cached && cached.src === zoomPage.imageData && cached.complete) {
+        return Promise.resolve(cached);
+      }
+
+      return new Promise((resolve) => {
+        const image = new Image();
+        image.onload = () => {
+          this.imageCache.set(id, image);
+          resolve(image);
+        };
+        image.onerror = () => resolve(null);
+        image.src = zoomPage.imageData;
+      });
+    },
+
+    async renderZoomImage(id) {
+      const zoomPage = boardState.zoomPages[id];
+      const imageCanvas = document.getElementById("zoomImageCanvas");
+      if (!zoomPage || !imageCanvas) return;
+      this.ensureZoomLayout(zoomPage);
+      const ctx = imageCanvas.getContext("2d");
+      ctx.clearRect(0, 0, imageCanvas.width, imageCanvas.height);
+
+      const loadedImage = await this.getZoomImage(id);
+      if (!loadedImage) return;
+      ctx.save();
+      ctx.shadowColor = "rgba(0, 0, 0, 0.18)";
+      ctx.shadowBlur = 20;
+      ctx.shadowOffsetY = 8;
+      ctx.drawImage(
+        loadedImage,
+        zoomPage.imageX + zoomPage.cameraX,
+        zoomPage.imageY + zoomPage.cameraY,
+        zoomPage.imageWidth,
+        zoomPage.imageHeight
+      );
+      ctx.restore();
     },
 
     renderZoomAnnotations(id) {
@@ -1677,7 +1840,7 @@
         ZoomManager.renderMarkers(page);
       });
       if (boardState.mode === "zoom" && boardState.activeZoomPageId) {
-        Renderer.redrawZoom(boardState.activeZoomPageId);
+        ZoomManager.renderZoomPage(boardState.activeZoomPageId);
       }
 
       UI.markDirty();
