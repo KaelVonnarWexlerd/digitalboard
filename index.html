@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Digital Board</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <script defer src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script
+      defer
+      src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+    ></script>
+    <script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script defer src="js/app.js"></script>
+  </head>
+  <body>
+    <section id="homeScreen" class="home-screen">
+      <div class="home-shell">
+        <div class="brand-block">
+          <p class="eyebrow">PDF Annotation Board</p>
+          <h1>Digital Board</h1>
+        </div>
+
+        <label id="uploadBox" class="upload-box" for="pdfUpload">
+          <input id="pdfUpload" type="file" accept="application/pdf" />
+          <span class="upload-icon" aria-hidden="true">
+            <i data-lucide="file-up"></i>
+          </span>
+          <span class="upload-title">拖曳 PDF 到這裡，或點擊上傳</span>
+          <span class="upload-meta">上傳後直接進入全螢幕註記模式</span>
+        </label>
+
+        <div class="home-actions">
+          <button id="importJsonHome" class="secondary-button" type="button">
+            <i data-lucide="folder-input"></i>
+            <span>匯入註記 JSON</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section id="boardScreen" class="board-screen" aria-label="Digital Board workspace">
+      <header id="topBar" class="top-bar">
+        <div class="status-group primary-status">
+          <button id="backHome" class="icon-button compact" type="button" title="回首頁" aria-label="回首頁">
+            <i data-lucide="chevron-left"></i>
+          </button>
+          <div class="file-status">
+            <span id="fileName">尚未開啟 PDF</span>
+            <span id="saveStatus" class="muted">尚未儲存</span>
+          </div>
+        </div>
+        <div class="status-group center-status">
+          <span id="pageIndicator">Page 0 / 0</span>
+          <span id="modeIndicator">PDF Board</span>
+        </div>
+        <div class="status-group">
+          <span id="zoomIndicator">100%</span>
+        </div>
+      </header>
+
+      <main id="pdfBoard" class="pdf-board" aria-label="PDF pages"></main>
+
+      <section id="zoomScreen" class="zoom-screen" aria-label="Zoom board">
+        <div id="zoomStage" class="zoom-stage">
+          <canvas id="zoomImageCanvas" class="zoom-image-canvas"></canvas>
+          <canvas id="zoomAnnotationCanvas" class="zoom-annotation-canvas"></canvas>
+        </div>
+        <div id="zoomActions" class="zoom-actions">
+          <button id="deleteZoomPage" class="icon-button danger" type="button" title="刪除放大頁" aria-label="刪除放大頁">
+            <i data-lucide="trash-2"></i>
+          </button>
+          <button id="saveZoomPage" class="icon-button success" type="button" title="儲存放大頁" aria-label="儲存放大頁">
+            <i data-lucide="save"></i>
+          </button>
+        </div>
+      </section>
+
+      <aside id="leftRail" class="tool-rail left" aria-label="主要工具">
+        <button class="rail-handle" type="button" title="收合左側工具列" aria-label="收合左側工具列">
+          <i data-lucide="grip-vertical"></i>
+        </button>
+        <button class="tool-btn active" data-tool="cursor" type="button" title="鼠標" aria-label="鼠標">
+          <i data-lucide="mouse-pointer-2"></i>
+        </button>
+        <button class="tool-btn" data-tool="pen" type="button" title="筆" aria-label="筆">
+          <i data-lucide="pen-line"></i>
+        </button>
+        <button class="tool-btn" data-tool="highlighter" type="button" title="螢光筆" aria-label="螢光筆">
+          <i data-lucide="highlighter"></i>
+        </button>
+        <button class="tool-btn" data-tool="eraser" type="button" title="橡皮擦" aria-label="橡皮擦">
+          <i data-lucide="eraser"></i>
+        </button>
+        <button class="tool-btn" data-tool="clearPage" type="button" title="全部清除" aria-label="全部清除">
+          <i data-lucide="paintbrush-vertical"></i>
+        </button>
+        <button class="tool-btn" data-tool="zoomArea" type="button" title="放大區域" aria-label="放大區域">
+          <i data-lucide="scan-search"></i>
+        </button>
+        <button class="tool-btn" data-tool="shape" type="button" title="形狀" aria-label="形狀">
+          <i data-lucide="shapes"></i>
+        </button>
+      </aside>
+
+      <aside id="rightRail" class="tool-rail right" aria-label="輔助工具">
+        <button class="rail-handle" type="button" title="收合右側工具列" aria-label="收合右側工具列">
+          <i data-lucide="grip-vertical"></i>
+        </button>
+        <button class="tool-btn" data-action="zoomIn" type="button" title="放大" aria-label="放大">
+          <i data-lucide="zoom-in"></i>
+        </button>
+        <button class="tool-btn" data-action="zoomOut" type="button" title="縮小" aria-label="縮小">
+          <i data-lucide="zoom-out"></i>
+        </button>
+        <button class="tool-btn" data-action="undo" type="button" title="還原" aria-label="還原">
+          <i data-lucide="undo-2"></i>
+        </button>
+        <button class="tool-btn" data-action="redo" type="button" title="返還原" aria-label="返還原">
+          <i data-lucide="redo-2"></i>
+        </button>
+        <button class="tool-btn" data-action="save" type="button" title="儲存本機" aria-label="儲存本機">
+          <i data-lucide="save"></i>
+        </button>
+        <button class="tool-btn" data-action="export" type="button" title="匯出 JSON" aria-label="匯出 JSON">
+          <i data-lucide="download"></i>
+        </button>
+        <button class="tool-btn" data-action="import" type="button" title="匯入 JSON" aria-label="匯入 JSON">
+          <i data-lucide="upload"></i>
+        </button>
+      </aside>
+
+      <div id="penPanel" class="floating-panel" aria-label="筆設定">
+        <div class="panel-header">
+          <h2>筆</h2>
+          <button class="panel-close icon-button compact" type="button" title="關閉" aria-label="關閉">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <label class="control-row">
+          <span>粗細</span>
+          <output id="penSizeValue">4</output>
+          <input id="penSize" type="range" min="1" max="60" value="4" />
+        </label>
+        <label class="control-row">
+          <span>透明度</span>
+          <output id="penOpacityValue">1</output>
+          <input id="penOpacity" type="range" min="0.1" max="1" step="0.05" value="1" />
+        </label>
+        <div class="panel-section">
+          <span class="section-label">預設顏色</span>
+          <div id="penPresetColors" class="color-grid"></div>
+        </div>
+        <div class="panel-section">
+          <span class="section-label">自訂顏色</span>
+          <div id="penCustomColors" class="color-grid"></div>
+        </div>
+        <label class="code-input">
+          <span>色碼</span>
+          <input id="penColorCode" type="text" value="#000000" spellcheck="false" />
+        </label>
+        <div id="penColorWheel" class="color-wheel-360"></div>
+      </div>
+
+      <div id="highlighterPanel" class="floating-panel" aria-label="螢光筆設定">
+        <div class="panel-header">
+          <h2>螢光筆</h2>
+          <button class="panel-close icon-button compact" type="button" title="關閉" aria-label="關閉">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <label class="control-row">
+          <span>粗細</span>
+          <output id="highlighterSizeValue">18</output>
+          <input id="highlighterSize" type="range" min="4" max="100" value="18" />
+        </label>
+        <label class="control-row">
+          <span>透明度</span>
+          <output id="highlighterOpacityValue">0.35</output>
+          <input
+            id="highlighterOpacity"
+            type="range"
+            min="0.1"
+            max="0.8"
+            step="0.05"
+            value="0.35"
+          />
+        </label>
+        <div class="panel-section">
+          <span class="section-label">預設顏色</span>
+          <div id="highlighterPresetColors" class="color-grid"></div>
+        </div>
+        <div class="panel-section">
+          <span class="section-label">自訂顏色</span>
+          <div id="highlighterCustomColors" class="color-grid"></div>
+        </div>
+        <label class="code-input">
+          <span>色碼</span>
+          <input id="highlighterColorCode" type="text" value="#FFFF00" spellcheck="false" />
+        </label>
+        <div id="highlighterColorWheel" class="color-wheel-360"></div>
+      </div>
+
+      <div id="eraserPanel" class="floating-panel" aria-label="橡皮擦設定">
+        <div class="panel-header">
+          <h2>橡皮擦</h2>
+          <button class="panel-close icon-button compact" type="button" title="關閉" aria-label="關閉">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <label class="control-row">
+          <span>大小</span>
+          <output id="eraserSizeValue">24</output>
+          <input id="eraserSize" type="range" min="4" max="120" value="24" />
+        </label>
+        <div id="eraserPreview" class="eraser-preview"></div>
+      </div>
+
+      <div id="shapePanel" class="floating-panel" aria-label="形狀設定">
+        <div class="panel-header">
+          <h2>形狀</h2>
+          <button class="panel-close icon-button compact" type="button" title="關閉" aria-label="關閉">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="segmented-control shape-tabs" role="tablist" aria-label="形狀分類">
+          <button class="active" data-shape-group="line" type="button">線條</button>
+          <button data-shape-group="flat" type="button">平面</button>
+          <button data-shape-group="solid" type="button">立體</button>
+          <button data-shape-group="table" type="button">表格</button>
+        </div>
+        <div id="shapeOptions" class="shape-options"></div>
+        <label class="control-row">
+          <span>粗細</span>
+          <output id="shapeStrokeWidthValue">3</output>
+          <input id="shapeStrokeWidth" type="range" min="1" max="40" value="3" />
+        </label>
+        <div id="tableControls" class="table-controls">
+          <label>
+            <span>列</span>
+            <input id="shapeRows" type="number" min="1" max="12" value="3" />
+          </label>
+          <label>
+            <span>欄</span>
+            <input id="shapeCols" type="number" min="1" max="12" value="3" />
+          </label>
+        </div>
+        <div class="panel-section">
+          <span class="section-label">預設顏色</span>
+          <div id="shapePresetColors" class="color-grid"></div>
+        </div>
+        <div class="panel-section">
+          <span class="section-label">自訂顏色</span>
+          <div id="shapeCustomColors" class="color-grid"></div>
+        </div>
+        <label class="code-input">
+          <span>色碼</span>
+          <input id="shapeColorCode" type="text" value="#00AEEF" spellcheck="false" />
+        </label>
+        <div id="shapeColorWheel" class="color-wheel-360"></div>
+      </div>
+
+      <input id="jsonUpload" type="file" accept="application/json" hidden />
+      <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+    </section>
+  </body>
+</html>
