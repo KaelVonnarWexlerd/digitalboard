@@ -1007,6 +1007,7 @@
 
       if (isOpen && isSameSide) {
         $rail.addClass("collapsed");
+        $("#boardScreen").removeClass("rail-open");
         $(".edge-slider").removeClass("active").attr("aria-expanded", "false");
         this.closeMoreMenu();
         $(".floating-panel").removeClass("active");
@@ -1014,6 +1015,7 @@
       }
 
       $rail.removeClass("left right collapsed").addClass(normalizedSide);
+      $("#boardScreen").addClass("rail-open");
       $(".edge-slider").removeClass("active").attr("aria-expanded", "false");
       $(`.edge-slider[data-rail-side="${normalizedSide}"]`).addClass("active").attr("aria-expanded", "true");
     },

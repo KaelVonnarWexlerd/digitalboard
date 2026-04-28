@@ -1040,15 +1040,23 @@ output {
 
 .zoom-actions {
   position: fixed;
-  right: 28px;
+  right: auto;
   bottom: 28px;
   z-index: 170;
   display: none;
   gap: 10px;
 }
 
-.zoom-screen.active .zoom-actions {
+.board-screen.rail-open.rail-left .zoom-screen.active .zoom-actions {
   display: flex;
+  right: auto;
+  left: 24px;
+}
+
+.board-screen.rail-open.rail-right .zoom-screen.active .zoom-actions {
+  display: flex;
+  right: 24px;
+  left: auto;
 }
 
 .toast-container {
@@ -1144,7 +1152,6 @@ body.is-board {
   }
 
   .zoom-actions {
-    right: 28px;
     bottom: 92px;
   }
 
