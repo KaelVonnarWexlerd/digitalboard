@@ -342,7 +342,7 @@
 
     showBoard() {
       $("body").addClass("is-board");
-      $("#boardScreen").addClass("active");
+      $("#boardScreen").addClass("active").removeClass("zoom-active");
       $("#zoomScreen").removeClass("active");
       $("#pdfBoard").removeClass("hidden");
       this.updateStatus();
@@ -869,7 +869,7 @@
       if (!pdfDocument) return;
       const nextPage = Utils.clamp(Number(pageNumber) || 1, 1, pdfDocument.numPages);
       if (boardState.mode === "zoom") {
-        ZoomManager.exitToPdf();
+        ZoomManager.exitToPdf({ restoreView: false });
       }
       const board = $("#pdfBoard")[0];
       const wrapper = document.querySelector(`.pdf-page[data-page="${nextPage}"]`);
@@ -900,7 +900,6 @@
         event.preventDefault();
         event.stopPropagation();
         this.runAction($(event.currentTarget).data("action"));
-        this.closeMoreMenu();
       });
 
       $(".edge-slider")
@@ -1010,7 +1009,7 @@
         $("#boardScreen").removeClass("rail-open");
         $(".edge-slider").removeClass("active").attr("aria-expanded", "false");
         this.closeMoreMenu();
-        $(".floating-panel").removeClass("active");
+        PanelManager.close();
         return;
       }
 
@@ -1030,6 +1029,7 @@
     toggleMoreMenu() {
       const $menu = $("#moreToolsMenu");
       const willOpen = $menu.hasClass("hidden");
+      if (willOpen) PanelManager.close();
       $menu.toggleClass("hidden", !willOpen);
       $("#moreToolsButton")
         .toggleClass("menu-open", willOpen)
@@ -1042,14 +1042,21 @@
     },
 
     setTool(tool) {
+      const isSameTool = boardState.currentTool === tool;
+      const isExpanded = PanelManager.isOpenFor(tool);
       boardState.currentTool = tool;
       $(".tool-btn[data-tool]").removeClass("active");
       $(`.tool-btn[data-tool="${tool}"]`).addClass("active");
       this.closeMoreMenu();
-      PanelManager.open(tool);
+      if (isSameTool && isExpanded) {
+        PanelManager.close();
+      } else {
+        PanelManager.open(tool);
+      }
       CanvasManager.refreshCanvasCursors();
       if (tool !== "lasso") LassoManager.clearSelection();
 
+      if (isSameTool && isExpanded) return;
       if (tool === "clearPage") {
         UI.toast("點擊目前頁面即可清除該頁註記");
       }
@@ -1172,21 +1179,31 @@
   };
 
   const PanelManager = {
+    panelMap: {
+      pen: "#penPanel",
+      highlighter: "#highlighterPanel",
+      eraser: "#eraserPanel",
+      lasso: "#lassoPanel",
+      shape: "#shapePanel"
+    },
+
     init() {
-      $(".panel-close").on("click", () => $(".floating-panel").removeClass("active"));
+      $(".panel-close").on("click", () => this.close());
+    },
+
+    close() {
+      $(".floating-panel").removeClass("active");
+    },
+
+    isOpenFor(tool) {
+      const selector = this.panelMap[tool];
+      return Boolean(selector && $(selector).hasClass("active"));
     },
 
     open(tool) {
-      $(".floating-panel").removeClass("active");
-      const panelMap = {
-        pen: "#penPanel",
-        highlighter: "#highlighterPanel",
-        eraser: "#eraserPanel",
-        lasso: "#lassoPanel",
-        shape: "#shapePanel"
-      };
-      if (panelMap[tool]) {
-        $(panelMap[tool]).addClass("active");
+      this.close();
+      if (this.panelMap[tool]) {
+        $(this.panelMap[tool]).addClass("active");
       }
     }
   };
@@ -2995,6 +3012,7 @@
   const ZoomManager = {
     resizeTimer: null,
     imageCache: new Map(),
+    pdfReturnView: null,
 
     init() {
       const zoomCanvas = document.getElementById("zoomAnnotationCanvas");
@@ -3070,8 +3088,10 @@
     enter(id) {
       const zoomPage = boardState.zoomPages[id];
       if (!zoomPage) return;
+      this.pdfReturnView = this.capturePdfReturnView();
       boardState.mode = "zoom";
       boardState.activeZoomPageId = id;
+      $("#boardScreen").addClass("zoom-active");
       $("#pdfBoard").addClass("hidden");
       $("#zoomScreen").addClass("active");
       $("#zoomAnnotationCanvas").attr("data-zoom-id", id);
@@ -3081,12 +3101,50 @@
       CanvasManager.refreshCanvasCursors();
     },
 
-    exitToPdf() {
+    capturePdfReturnView() {
+      const board = $("#pdfBoard")[0];
+      if (!board) return null;
+      return {
+        scrollLeft: board.scrollLeft,
+        scrollTop: board.scrollTop,
+        currentPage: boardState.currentPage || 1
+      };
+    },
+
+    exitToPdf(options = {}) {
+      const restoreView = options.restoreView !== false;
       boardState.mode = "pdf";
       boardState.activeZoomPageId = null;
+      $("#boardScreen").removeClass("zoom-active");
       $("#zoomScreen").removeClass("active");
       $("#pdfBoard").removeClass("hidden");
+      if (restoreView) {
+        this.restorePdfReturnView();
+      } else {
+        this.pdfReturnView = null;
+      }
       UI.updateStatus();
+    },
+
+    restorePdfReturnView() {
+      const view = this.pdfReturnView;
+      const board = $("#pdfBoard")[0];
+      this.pdfReturnView = null;
+      if (!view || !board) return;
+
+      boardState.currentPage = view.currentPage;
+      const previousScrollBehavior = board.style.scrollBehavior;
+      board.style.scrollBehavior = "auto";
+      board.scrollLeft = view.scrollLeft;
+      board.scrollTop = view.scrollTop;
+      window.requestAnimationFrame(() => {
+        board.style.scrollBehavior = previousScrollBehavior;
+        board.scrollLeft = view.scrollLeft;
+        board.scrollTop = view.scrollTop;
+        UI.updateStatus();
+        ToolManager.updateEdgeSliders();
+        LassoManager.renderSelection();
+      });
     },
 
     renderZoomPage(id) {

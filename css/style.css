@@ -575,6 +575,10 @@ h1 {
   margin-bottom: 14px;
 }
 
+.board-screen.rail-left .panel-header {
+  flex-direction: row-reverse;
+}
+
 .panel-header h2 {
   margin: 0;
   font-size: 20px;
@@ -831,14 +835,19 @@ output {
 
 .zoom-screen {
   position: absolute;
-  inset: 56px 0 0;
-  z-index: 80;
+  inset: 0;
+  z-index: 130;
   display: none;
-  background: var(--bg-main);
+  background: #ffffff;
 }
 
 .board-screen.top-bar-hidden .zoom-screen {
   inset: 0;
+}
+
+.board-screen.zoom-active .top-bar,
+.board-screen.zoom-active .top-bar-tab {
+  display: none !important;
 }
 
 .zoom-screen.active {
@@ -847,11 +856,11 @@ output {
 
 .zoom-stage {
   position: absolute;
-  inset: 18px 18px 24px;
+  inset: 0 18px;
   overflow: hidden;
-  border-radius: 8px;
+  border-radius: 0;
   background: #ffffff;
-  box-shadow: var(--shadow);
+  box-shadow: none;
 }
 
 .zoom-image-canvas {
@@ -1144,11 +1153,11 @@ body.is-board {
   }
 
   .zoom-screen {
-    inset: 56px 0 0;
+    inset: 0;
   }
 
   .zoom-stage {
-    inset: 18px 18px 80px;
+    inset: 0 18px;
   }
 
   .zoom-actions {
