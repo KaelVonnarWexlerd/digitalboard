@@ -402,6 +402,45 @@
       window.setTimeout(() => {
         $toast.fadeOut(160, () => $toast.remove());
       }, 2600);
+    },
+
+    confirm(message, options = {}) {
+      return new Promise((resolve) => {
+        const confirmText = options.confirmText || "確定";
+        const cancelText = options.cancelText || "取消";
+        const danger = options.danger !== false;
+        const overlay = document.createElement("div");
+        overlay.className = "confirm-overlay";
+        overlay.innerHTML = `
+          <div class="confirm-dialog" role="dialog" aria-modal="true" aria-label="確認">
+            <p>${message}</p>
+            <div class="confirm-actions">
+              <button class="confirm-cancel" type="button">${cancelText}</button>
+              <button class="confirm-ok${danger ? " danger" : ""}" type="button">${confirmText}</button>
+            </div>
+          </div>
+        `;
+
+        const cleanup = (result) => {
+          document.removeEventListener("keydown", onKeydown);
+          overlay.remove();
+          resolve(result);
+        };
+
+        const onKeydown = (event) => {
+          if (event.key === "Escape") cleanup(false);
+          if (event.key === "Enter") cleanup(true);
+        };
+
+        overlay.querySelector(".confirm-cancel").addEventListener("click", () => cleanup(false));
+        overlay.querySelector(".confirm-ok").addEventListener("click", () => cleanup(true));
+        overlay.addEventListener("click", (event) => {
+          if (event.target === overlay) cleanup(false);
+        });
+        document.addEventListener("keydown", onKeydown);
+        document.body.appendChild(overlay);
+        overlay.querySelector(".confirm-cancel").focus();
+      });
     }
   };
 
@@ -1825,13 +1864,17 @@
       return boardState.shape.cols;
     },
 
-    clearTarget(target) {
+    async clearTarget(target) {
       const annotations = Utils.getAnnotations(target);
       if (!annotations.length) {
         UI.toast("目前沒有註記可清除");
         return;
       }
-      if (!window.confirm("確定要清除目前頁面的所有註記？")) return;
+      const confirmed = await UI.confirm("確定要清除目前頁面的所有註記？", {
+        confirmText: "清除",
+        danger: true
+      });
+      if (!confirmed) return;
       const previous = Utils.clone(annotations);
       annotations.length = 0;
       HistoryManager.push(target, { type: "clearAnnotations", previous });
@@ -3297,11 +3340,15 @@
       UI.toast("已儲存放大頁");
     },
 
-    deleteActive() {
+    async deleteActive() {
       const id = boardState.activeZoomPageId;
       const zoomPage = boardState.zoomPages[id];
       if (!zoomPage) return;
-      if (!window.confirm("確定要刪除此放大頁？")) return;
+      const confirmed = await UI.confirm("確定要刪除此放大頁？", {
+        confirmText: "刪除",
+        danger: true
+      });
+      if (!confirmed) return;
       const page = Utils.getPage(zoomPage.sourcePage);
       page.zoomMarkers = page.zoomMarkers.filter((marker) => marker.zoomPageId !== id);
       delete boardState.zoomPages[id];

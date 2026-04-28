@@ -1095,6 +1095,50 @@ output {
   border-color: rgba(255, 77, 79, 0.55);
 }
 
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 420;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.confirm-dialog {
+  width: min(360px, calc(100vw - 40px));
+  padding: 18px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--bg-panel-solid);
+  color: var(--text-main);
+  box-shadow: var(--shadow);
+}
+
+.confirm-dialog p {
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.confirm-actions button {
+  min-width: 76px;
+  min-height: 38px;
+  border-radius: 8px;
+  background: var(--bg-button);
+  color: var(--text-dark);
+  cursor: pointer;
+}
+
+.confirm-actions .confirm-ok.danger {
+  background: var(--danger);
+  color: #ffffff;
+}
+
 .hidden {
   display: none !important;
 }
