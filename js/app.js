@@ -1798,7 +1798,7 @@
         const rect = this.getRect(active.start, active.latest, active.canvas);
         this.clearSelectionLayer(active.canvas);
         if (!rect || rect.width < 24 || rect.height < 24) {
-          UI.toast("選取區域太小", "error");
+          ZoomManager.createBlankFromPoint(active.target.page, active.start);
           return;
         }
         ZoomManager.createFromSelection(active.target.page, rect);
@@ -1952,7 +1952,7 @@
         this.hideEraserCursor();
         return;
       }
-      const size = Math.max(8, boardState.eraser.size * this.getCanvasScale(canvas));
+      const size = Math.max(8, boardState.eraser.size);
       $("#eraserCursor")
         .css({
           display: "block",
@@ -2612,7 +2612,7 @@
         maskCtx.lineJoin = "round";
         group.annotations.forEach((annotation) => {
           if (!annotation.points || annotation.points.length < 2) return;
-          maskCtx.lineWidth = Math.max(1, annotation.size * scale);
+          maskCtx.lineWidth = this.getToolWidth(annotation.size);
           maskCtx.beginPath();
           maskCtx.moveTo(annotation.points[0].x * scale, annotation.points[0].y * scale);
           for (let index = 1; index < annotation.points.length; index += 1) {
@@ -2647,9 +2647,13 @@
       ctx.globalCompositeOperation = annotation.tool === "eraser" ? "destination-out" : "source-over";
       ctx.globalAlpha = annotation.opacity;
       ctx.strokeStyle = annotation.color;
-      ctx.lineWidth = Math.max(1, annotation.size * scale);
+      ctx.lineWidth = this.getToolWidth(annotation.size);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
+    },
+
+    getToolWidth(width) {
+      return Math.max(1, Number(width) || 1);
     },
 
     drawShape(ctx, annotation, scale) {
@@ -2663,7 +2667,7 @@
       ctx.globalAlpha = this.getStrokeOpacity(annotation);
       ctx.strokeStyle = annotation.color || "#00AEEF";
       ctx.fillStyle = annotation.fillColor || "#FFFFFF";
-      ctx.lineWidth = Math.max(1, annotation.strokeWidth * scale);
+      ctx.lineWidth = this.getToolWidth(annotation.strokeWidth);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
 
@@ -3112,6 +3116,32 @@
       UI.markDirty();
     },
 
+    createBlankFromPoint(pageNumber, point) {
+      const id = Utils.id("zoom");
+      const x = Number(point && point.x) || 0;
+      const y = Number(point && point.y) || 0;
+      boardState.zoomPages[id] = {
+        id,
+        sourcePage: pageNumber,
+        rect: { x, y, width: 1, height: 1 },
+        spaceType: "infinite-whiteboard",
+        imageData: null,
+        imageWidth: 0,
+        imageHeight: 0,
+        imageX: 0,
+        imageY: 0,
+        cameraX: null,
+        cameraY: 0,
+        annotations: [],
+        saved: false,
+        marker: null,
+        createdAt: Date.now()
+      };
+      Utils.ensureHistory({ kind: "zoom", id });
+      this.enter(id);
+      UI.markDirty();
+    },
+
     getZoomBoardSize(sourceWidth, sourceHeight) {
       const maxWidth = 1040;
       const maxHeight = 820;
@@ -3270,6 +3300,7 @@
     getZoomImage(id) {
       const zoomPage = boardState.zoomPages[id];
       if (!zoomPage) return Promise.resolve(null);
+      if (!zoomPage.imageData) return Promise.resolve(null);
       const cached = this.imageCache.get(id);
       if (cached && cached.src === zoomPage.imageData && cached.complete) {
         return Promise.resolve(cached);
