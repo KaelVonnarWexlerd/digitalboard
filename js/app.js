@@ -1255,6 +1255,7 @@
       this.buildColorTools("shapeFill");
       this.bindInputs();
       this.buildShapeOptions("line");
+      this.updateFillTransparentState();
     },
 
     buildColorTools(tool) {
@@ -1391,9 +1392,18 @@
         UI.toast("色碼格式不正確", "error");
         return;
       }
-      if (tool === "shape") boardState.shape.color = normalized;
-      else if (tool === "shapeFill") boardState.shape.fillColor = normalized;
-      else boardState[tool].color = normalized;
+      if (tool === "shape") {
+        boardState.shape.color = normalized;
+      } else if (tool === "shapeFill") {
+        boardState.shape.fillColor = normalized;
+        if (Number(boardState.shape.fillOpacity || 0) <= 0) {
+          this.syncShapeFillOpacity(1);
+        } else {
+          this.updateFillTransparentState();
+        }
+      } else {
+        boardState[tool].color = normalized;
+      }
       $(`#${tool}ColorCode`).val(normalized);
       this.refreshActive(tool);
       UI.markDirty();
@@ -1409,6 +1419,18 @@
         const chipColor = $(chip).data("color") || $(chip).attr("title");
         $(chip).toggleClass("active", chipColor && chipColor.toUpperCase() === color.toUpperCase());
       });
+    },
+
+    syncShapeFillOpacity(value) {
+      const fillOpacity = Utils.clamp(Number(value) || 0, 0, 1);
+      boardState.shape.fillOpacity = fillOpacity;
+      $("#shapeFillOpacity").val(fillOpacity);
+      $("#shapeFillOpacityValue").text(fillOpacity);
+      this.updateFillTransparentState();
+    },
+
+    updateFillTransparentState() {
+      $("#shapeFillTransparent").toggleClass("active", Number(boardState.shape.fillOpacity || 0) <= 0);
     },
 
     bindInputs() {
@@ -1444,8 +1466,11 @@
         UI.markDirty();
       });
       $("#shapeFillOpacity").on("input", (event) => {
-        boardState.shape.fillOpacity = Utils.clamp(Number(event.target.value) || 0, 0, 1);
-        $("#shapeFillOpacityValue").text(boardState.shape.fillOpacity);
+        this.syncShapeFillOpacity(event.target.value);
+        UI.markDirty();
+      });
+      $("#shapeFillTransparent").on("click", () => {
+        this.syncShapeFillOpacity(0);
         UI.markDirty();
       });
       $("#shapePolygonSides").on("input", (event) => {
@@ -1546,8 +1571,7 @@
       $("#shapeStrokeWidth").val(boardState.shape.strokeWidth);
       $("#shapeStrokeWidthValue").text(boardState.shape.strokeWidth);
       $("#shapeColorCode").val(boardState.shape.color);
-      $("#shapeFillOpacity").val(boardState.shape.fillOpacity || 0);
-      $("#shapeFillOpacityValue").text(boardState.shape.fillOpacity || 0);
+      this.syncShapeFillOpacity(boardState.shape.fillOpacity || 0);
       $("#shapeFillColorCode").val(boardState.shape.fillColor || "#FFFFFF");
       $("#shapePolygonSides").val(boardState.shape.polygonSides || 6);
       $("#shapeStartMarker").val(boardState.shape.startMarker || "none");

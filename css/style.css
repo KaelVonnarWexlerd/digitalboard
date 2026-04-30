@@ -639,6 +639,29 @@ output {
   outline-offset: 2px;
 }
 
+.fill-transparent-button {
+  width: 100%;
+  min-height: 36px;
+  margin: 8px 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.22) 25%, transparent 25% 50%, rgba(255, 255, 255, 0.22) 50% 75%, transparent 75%),
+    rgba(255, 255, 255, 0.08);
+  background-size: 14px 14px;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.fill-transparent-button.active {
+  border-color: var(--accent);
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.28) 25%, transparent 25% 50%, rgba(255, 255, 255, 0.28) 50% 75%, transparent 75%),
+    rgba(64, 156, 255, 0.28);
+  background-size: 14px 14px;
+  color: #ffffff;
+}
+
 .custom-color-slot {
   position: relative;
   width: 28px;
