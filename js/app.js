@@ -497,7 +497,7 @@
       $(window).on("resize", () => {
         if (!pdfDocument || boardState.mode !== "pdf") return;
         window.clearTimeout(this.resizeTimer);
-        this.resizeTimer = window.setTimeout(() => this.renderAllPages(), 160);
+        this.resizeTimer = window.setTimeout(() => this.renderAllPages({ preserveView: true }), 160);
       });
     },
 
@@ -540,7 +540,7 @@
         Utils.resetForFile(file.name);
         UI.showBoard();
         ToolManager.setTool("cursor");
-        await this.renderAllPages();
+        await this.renderAllPages({ preserveView: false });
 
         if (pendingImportData) {
           StorageManager.applyData(pendingImportData);
@@ -651,8 +651,10 @@
       return pdfjsLoadPromise;
     },
 
-    async renderAllPages() {
+    async renderAllPages(options = {}) {
       if (!pdfDocument) return;
+      const preserveView = options.preserveView !== false;
+      const preservedView = preserveView ? this.capturePdfView() : null;
       const token = ++renderToken;
       this.resetPageRenderer();
       $("#pdfBoard").empty();
@@ -669,12 +671,91 @@
       }
 
       this.observePageRendering(token);
-      this.updateCurrentPageFromScroll();
+      if (preservedView) {
+        this.restorePdfView(preservedView, token);
+      } else {
+        this.updateCurrentPageFromScroll();
+      }
       UI.updateStatus();
       CanvasManager.refreshCanvasCursors();
       LassoManager.renderSelection();
       ToolManager.updateEdgeSliders();
       this.enqueueNearbyPages(boardState.currentPage || 1, token);
+    },
+
+    capturePdfView() {
+      const board = $("#pdfBoard")[0];
+      if (!board || !pdfDocument) return null;
+      const boardRect = board.getBoundingClientRect();
+      const focusX = boardRect.left + boardRect.width / 2;
+      const focusY = boardRect.top + boardRect.height / 2;
+      let bestWrapper = null;
+      let bestDistance = Infinity;
+
+      document.querySelectorAll(".pdf-page").forEach((wrapper) => {
+        const rect = wrapper.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        const distance = Math.abs(rect.top + rect.height / 2 - focusY);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestWrapper = wrapper;
+        }
+      });
+
+      if (!bestWrapper) {
+        return {
+          page: boardState.currentPage || 1,
+          yRatio: 0,
+          xRatio: 0.5,
+          scrollLeft: board.scrollLeft,
+          scrollTop: board.scrollTop
+        };
+      }
+
+      const rect = bestWrapper.getBoundingClientRect();
+      return {
+        page: Number(bestWrapper.dataset.page) || boardState.currentPage || 1,
+        yRatio: Utils.clamp((focusY - rect.top) / rect.height, 0, 1),
+        xRatio: Utils.clamp((focusX - rect.left) / rect.width, 0, 1),
+        scrollLeft: board.scrollLeft,
+        scrollTop: board.scrollTop
+      };
+    },
+
+    restorePdfView(view, token = renderToken) {
+      if (!view) return;
+      const applyView = () => {
+        if (token !== renderToken || !pdfDocument) return;
+        const board = $("#pdfBoard")[0];
+        if (!board) return;
+        const page = Utils.clamp(Number(view.page) || 1, 1, pdfDocument.numPages);
+        const wrapper = document.querySelector(`.pdf-page[data-page="${page}"]`);
+        if (!wrapper) return;
+
+        const previousScrollBehavior = board.style.scrollBehavior;
+        const maxScrollTop = Math.max(0, board.scrollHeight - board.clientHeight);
+        const maxScrollLeft = Math.max(0, board.scrollWidth - board.clientWidth);
+        const targetTop = wrapper.offsetTop + wrapper.offsetHeight * Utils.clamp(Number(view.yRatio) || 0, 0, 1) - board.clientHeight / 2;
+        const targetLeft = wrapper.offsetLeft + wrapper.offsetWidth * Utils.clamp(Number(view.xRatio) || 0.5, 0, 1) - board.clientWidth / 2;
+
+        board.style.scrollBehavior = "auto";
+        board.scrollTop = Utils.clamp(targetTop, 0, maxScrollTop);
+        board.scrollLeft = Utils.clamp(targetLeft, 0, maxScrollLeft);
+        boardState.currentPage = page;
+        UI.updateStatus();
+        ToolManager.updateEdgeSliders();
+        LassoManager.renderSelection();
+        board.style.scrollBehavior = previousScrollBehavior;
+      };
+
+      applyView();
+      window.requestAnimationFrame(() => {
+        applyView();
+        window.requestAnimationFrame(() => {
+          applyView();
+          this.updateCurrentPageFromScroll();
+        });
+      });
     },
 
     waitForPaint() {
@@ -1143,6 +1224,7 @@
     },
 
     async toggleFullscreen() {
+      const preservedView = PDFViewer.capturePdfView();
       try {
         if (this.isFullscreen()) {
           if (document.exitFullscreen) {
@@ -1165,6 +1247,8 @@
         UI.toast("全螢幕切換失敗", "error");
       } finally {
         this.updateFullscreenButton();
+        PDFViewer.restorePdfView(preservedView);
+        window.setTimeout(() => PDFViewer.restorePdfView(preservedView), 260);
       }
     },
 
